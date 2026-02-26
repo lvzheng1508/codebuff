@@ -6,7 +6,7 @@ export interface ConfigRequest {
 
 export async function sendConfigToBackend(
   config: LocalCliConfig | null,
-  baseUrl: string = 'http://localhost:3000',
+  baseUrl: string,
 ): Promise<void> {
   const response = await fetch(`${baseUrl}/api/v1/config`, {
     method: 'POST',

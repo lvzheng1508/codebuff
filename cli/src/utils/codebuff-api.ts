@@ -590,6 +590,7 @@ export function resetApiClient(): void {
 
 import { loadLocalConfig } from '@codebuff/common/config/load-config'
 import { sendConfigToBackend } from '@codebuff/common/config/config-client'
+import { logger } from './logger'
 
 /**
  * Initialize and send local config to backend.
@@ -599,13 +600,13 @@ export async function initializeConfig(): Promise<LocalCliConfig | null> {
   try {
     const config = await loadLocalConfig()
     if (config) {
-      await sendConfigToBackend(config)
-      console.log(`Loaded local config with ${config.endpoints.length} endpoint(s)`)
+      await sendConfigToBackend(config, WEBSITE_URL)
+      logger.info(`Loaded local config with ${config.endpoints.length} endpoint(s)`)
     }
     return config
   } catch (error) {
     // Log error but don't fail - local config is optional
-    console.debug('Failed to load or send local config:', error)
+    logger.debug(error, 'Failed to load or send local config')
     return null
   }
 }

@@ -5,9 +5,16 @@ import type { LocalCliConfig } from '@codebuff/common/config/local-config.types'
 let currentConfig: LocalCliConfig | null = null
 
 export async function POST(request: NextRequest) {
-  const body = await request.json()
-  currentConfig = body.config as LocalCliConfig | null
-  return NextResponse.json({ success: true })
+  try {
+    const body = await request.json()
+    currentConfig = body.config as LocalCliConfig | null
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Invalid JSON in request body' },
+      { status: 400 }
+    )
+  }
 }
 
 export async function GET() {
