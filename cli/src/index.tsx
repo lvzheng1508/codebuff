@@ -27,6 +27,7 @@ import { initAnalytics, trackEvent } from './utils/analytics'
 import { getAuthToken, getAuthTokenDetails } from './utils/auth'
 import { resetCodebuffClient } from './utils/codebuff-client'
 import { setApiClientAuthToken } from './utils/codebuff-api'
+import { initializeConfig } from './utils/codebuff-api'
 import { getCliEnv } from './utils/env'
 import { initializeAgentRegistry } from './utils/local-agent-registry'
 import { clearLogFile, logger } from './utils/logger'
@@ -184,6 +185,9 @@ async function main(): Promise<void> {
 
   // Set the auth token for the API client
   setApiClientAuthToken(getAuthToken())
+
+  // Initialize and send local config to backend
+  await initializeConfig()
 
   // Handle login command before rendering the app
   if (isLoginCommand) {

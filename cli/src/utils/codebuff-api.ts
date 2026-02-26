@@ -4,6 +4,7 @@ import type {
   PublishAgentsResponse,
 } from '@codebuff/common/types/api/agents/publish'
 import type { FeedbackRequest } from '@codebuff/common/schemas/feedback'
+import type { LocalCliConfig } from '@codebuff/common/config/local-config.types'
 
 /**
  * API response types for consistent error handling.
@@ -581,4 +582,30 @@ export function resetApiClient(): void {
   sharedClient = null
   sharedAuthToken = undefined
   clientCreatedWithToken = undefined
+}
+
+// ============================================================================
+// Local config initialization
+// ============================================================================
+
+import { loadLocalConfig } from '@codebuff/common/config/load-config'
+import { sendConfigToBackend } from '@codebuff/common/config/config-client'
+
+/**
+ * Initialize and send local config to backend.
+ * This loads the local config file (if present) and sends it to the backend.
+ */
+export async function initializeConfig(): Promise<LocalCliConfig | null> {
+  try {
+    const config = await loadLocalConfig()
+    if (config) {
+      await sendConfigToBackend(config)
+      console.log(`Loaded local config with ${config.endpoints.length} endpoint(s)`)
+    }
+    return config
+  } catch (error) {
+    // Log error but don't fail - local config is optional
+    console.debug('Failed to load or send local config:', error)
+    return null
+  }
 }
