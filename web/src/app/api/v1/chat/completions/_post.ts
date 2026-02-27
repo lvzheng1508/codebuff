@@ -45,6 +45,7 @@ import {
   OpenRouterError,
 } from '@/llm-api/openrouter'
 import { extractApiKeyFromHeader } from '@/util/auth'
+import { skipBillingChecks } from '@/lib/local-mode'
 
 export const formatQuotaResetCountdown = (
   nextQuotaReset: string | null | undefined,
@@ -267,80 +268,92 @@ export async function postChatCompletions(params: {
     // When the function is provided, always include subscription credits in the balance:
     // error/null results mean subscription grants have 0 balance, so including them is harmless.
     const includeSubscriptionCredits = !!ensureSubscriberBlockGrant
-    if (ensureSubscriberBlockGrant) {
-      try {
-        const blockGrantResult = await ensureSubscriberBlockGrant({ userId, logger })
-        
-        // Check if user hit subscription limit and should be rate-limited
-        if (blockGrantResult && (isWeeklyLimitError(blockGrantResult) || isBlockExhaustedError(blockGrantResult))) {
-          // Fetch user's preference for falling back to a-la-carte credits
-          const preferences = getUserPreferences
-            ? await getUserPreferences({ userId, logger })
-            : { fallbackToALaCarte: true } // Default to allowing a-la-carte if no preference function
-          
-          if (!preferences.fallbackToALaCarte && !isFreeModeRequest) {
-            const resetTime = blockGrantResult.resetsAt
-            const resetCountdown = formatQuotaResetCountdown(resetTime.toISOString())
-            const limitType = isWeeklyLimitError(blockGrantResult) ? 'weekly' : '5-hour session'
-            
-            trackEvent({
-              event: AnalyticsEvent.CHAT_COMPLETIONS_INSUFFICIENT_CREDITS,
-              userId,
-              properties: {
-                reason: 'subscription_limit_no_fallback',
-                limitType,
-                fallbackToALaCarte: false,
-              },
-              logger,
-            })
-            
-            return NextResponse.json(
-              {
-                error: 'rate_limit_exceeded',
-                message: `Subscription ${limitType} limit reached. Your limit resets ${resetCountdown}. Enable "Continue with credits" in the CLI to use a-la-carte credits.`,
-              },
-              { status: 429 },
+
+    // Skip billing checks in local mode
+    if (!skipBillingChecks()) {
+      if (ensureSubscriberBlockGrant) {
+        try {
+          const blockGrantResult = await ensureSubscriberBlockGrant({ userId, logger })
+
+          // Check if user hit subscription limit and should be rate-limited
+          if (blockGrantResult && (isWeeklyLimitError(blockGrantResult) || isBlockExhaustedError(blockGrantResult))) {
+            // Fetch user's preference for falling back to a-la-carte credits
+            const preferences = getUserPreferences
+              ? await getUserPreferences({ userId, logger })
+              : { fallbackToALaCarte: true } // Default to allowing a-la-carte if no preference function
+
+            if (!preferences.fallbackToALaCarte && !isFreeModeRequest) {
+              const resetTime = blockGrantResult.resetsAt
+              const resetCountdown = formatQuotaResetCountdown(resetTime.toISOString())
+              const limitType = isWeeklyLimitError(blockGrantResult) ? 'weekly' : '5-hour session'
+
+              trackEvent({
+                event: AnalyticsEvent.CHAT_COMPLETIONS_INSUFFICIENT_CREDITS,
+                userId,
+                properties: {
+                  reason: 'subscription_limit_no_fallback',
+                  limitType,
+                  fallbackToALaCarte: false,
+                },
+                logger,
+              })
+
+              return NextResponse.json(
+                {
+                  error: 'rate_limit_exceeded',
+                  message: `Subscription ${limitType} limit reached. Your limit resets ${resetCountdown}. Enable "Continue with credits" in the CLI to use a-la-carte credits.`,
+                },
+                { status: 429 },
+              )
+            }
+            // If fallbackToALaCarte is true, continue to use a-la-carte credits
+            logger.info(
+              { userId, limitType: isWeeklyLimitError(blockGrantResult) ? 'weekly' : 'session' },
+              'Subscriber hit limit, falling back to a-la-carte credits',
             )
           }
-          // If fallbackToALaCarte is true, continue to use a-la-carte credits
-          logger.info(
-            { userId, limitType: isWeeklyLimitError(blockGrantResult) ? 'weekly' : 'session' },
-            'Subscriber hit limit, falling back to a-la-carte credits',
+        } catch (error) {
+          logger.error(
+            { error: getErrorObject(error), userId },
+            'Error ensuring subscription block grant',
           )
+          // Fail open: proceed with subscription credits included in balance check
         }
-      } catch (error) {
-        logger.error(
-          { error: getErrorObject(error), userId },
-          'Error ensuring subscription block grant',
-        )
-        // Fail open: proceed with subscription credits included in balance check
       }
+    } else {
+      logger.info(
+        { userId },
+        'Local mode active: skipping billing checks',
+      )
     }
 
     // Fetch user credit data (includes subscription credits when block grant was ensured)
+    // In local mode, we still fetch this for analytics/tracking purposes, but don't enforce it
     const {
       balance: { totalRemaining },
       nextQuotaReset,
     } = await getUserUsageData({ userId, logger, includeSubscriptionCredits })
 
-    // Credit check
-    if (totalRemaining <= 0 && !isFreeModeRequest) {
-      trackEvent({
-        event: AnalyticsEvent.CHAT_COMPLETIONS_INSUFFICIENT_CREDITS,
-        userId,
-        properties: {
-          totalRemaining,
-          nextQuotaReset,
-        },
-        logger,
-      })
-      const resetCountdown = formatQuotaResetCountdown(nextQuotaReset)
-      return NextResponse.json(
-        {
-          message: `Out of credits. Please add credits at ${env.NEXT_PUBLIC_CODEBUFF_APP_URL}/usage. Your free credits reset ${resetCountdown}.`,
-        },
-        { status: 402 },
-      )
+    // Credit check (skip in local mode)
+    if (!skipBillingChecks()) {
+      if (totalRemaining <= 0 && !isFreeModeRequest) {
+        trackEvent({
+          event: AnalyticsEvent.CHAT_COMPLETIONS_INSUFFICIENT_CREDITS,
+          userId,
+          properties: {
+            totalRemaining,
+            nextQuotaReset,
+          },
+          logger,
+        })
+        const resetCountdown = formatQuotaResetCountdown(nextQuotaReset)
+        return NextResponse.json(
+          {
+            message: `Out of credits. Please add credits at ${env.NEXT_PUBLIC_CODEBUFF_APP_URL}/usage. Your free credits reset ${resetCountdown}.`,
+          },
+          { status: 402 },
+        )
+      }
     }
 
     const openrouterApiKey = req.headers.get(BYOK_OPENROUTER_HEADER)
