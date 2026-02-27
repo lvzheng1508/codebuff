@@ -1,33 +1,54 @@
-# Codebuff Local Configuration Example
-# Copy this file to codebuff.local.yaml and configure your endpoints
+# Codebuff 本地模式配置示例
+# 复制此文件为 codebuff.local.yaml 并填入你的 API 密钥
 
-# Mode: 'local' for self-hosted, 'cloud' for Codebuff official
-mode: local
+mode: local  # 运行模式: local (本地) 或 cloud (云端)
 
-# Default endpoint for agents without specific bindings
+# 默认端点（用于没有特定绑定的 agent）
 default_endpoint: openai
 
-# Available LLM endpoints
+# LLM API 端点配置
 endpoints:
+  # OpenAI 配置
   - name: openai
-    base_url: https://api.openai.com
-    api_key: sk-your-openai-key-here
+    base_url: https://api.openai.com/v1
+    api_key: sk-your-openai-api-key-here
     model: gpt-4
 
+  # DeepSeek 配置
   - name: deepseek
-    base_url: https://api.deepseek.com
-    api_key: sk-your-deepseek-key
+    base_url: https://api.deepseek.com/v1
+    api_key: sk-your-deepseek-api-key-here
     model: deepseek-chat
 
+  # Anthropic Claude 配置
+  - name: anthropic
+    base_url: https://api.anthropic.com/v1
+    api_key: sk-ant-your-anthropic-api-key-here
+    model: claude-3-opus-20240229
+
+  # 本地 Ollama 配置
   - name: ollama
     base_url: http://localhost:11434/v1
     model: llama2
 
-# Optional: Map specific agents to endpoints
+  # 其他 OpenAI 兼容服务
+  # - name: custom
+  #   base_url: https://your-custom-endpoint.com/v1
+  #   api_key: your-api-key
+  #   model: your-model-name
+
+# Agent 与端点的绑定（可选）
+# 为不同的 agent 指定使用不同的 LLM
 agent_bindings:
+  # 规划 agent 使用 GPT-4
   - agent_id: base2
     endpoint: openai
     model: gpt-4-turbo
 
+  # 编辑 agent 使用 DeepSeek（更快更便宜）
   - agent_id: editor
     endpoint: deepseek
+
+  # 代码审查 agent 使用 Claude（质量更高）
+  - agent_id: reviewer
+    endpoint: anthropic
