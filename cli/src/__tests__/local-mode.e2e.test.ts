@@ -342,27 +342,103 @@ endpoints:
       await expect(loadLocalConfig()).rejects.toThrow()
     })
 
-    test('handles empty config file', async () => {
+    test('handles empty config file with validation error', async () => {
       const configPath = path.join(tempDir, 'codebuff.local.json')
       await fs.writeFile(configPath, '{}')
 
       process.chdir(tempDir)
 
-      const loaded = await loadLocalConfig()
-      // Empty config is still valid (just missing fields)
-      expect(loaded).toBeDefined()
+      // Empty config should fail validation (missing required fields)
+      await expect(loadLocalConfig()).rejects.toThrow('Invalid config')
     })
 
-    test('handles config with only mode field', async () => {
+    test('handles config with only mode field and no endpoints', async () => {
       const config = { mode: 'local' as const, endpoints: [] }
       const configPath = path.join(tempDir, 'codebuff.local.json')
       await fs.writeFile(configPath, JSON.stringify(config))
 
       process.chdir(tempDir)
 
-      const loaded = await loadLocalConfig()
-      expect(loaded?.mode).toBe('local')
-      expect(loaded?.endpoints).toEqual([])
+      // Should fail validation - at least one endpoint is required
+      await expect(loadLocalConfig()).rejects.toThrow('At least one endpoint is required')
+    })
+
+    test('validates URL format for base_url', async () => {
+      const config = {
+        mode: 'local' as const,
+        endpoints: [{ name: 'test', base_url: 'not-a-url' }],
+      }
+      const configPath = path.join(tempDir, 'codebuff.local.json')
+      await fs.writeFile(configPath, JSON.stringify(config))
+
+      process.chdir(tempDir)
+
+      // Should fail validation - base_url must be a valid URL
+      await expect(loadLocalConfig()).rejects.toThrow('Invalid config')
+    })
+
+    test('validates mode enum values', async () => {
+      const config = {
+        mode: 'invalid' as any,
+        endpoints: [{ name: 'test', base_url: 'https://test.ai' }],
+      }
+      const configPath = path.join(tempDir, 'codebuff.local.json')
+      await fs.writeFile(configPath, JSON.stringify(config))
+
+      process.chdir(tempDir)
+
+      // Should fail validation - mode must be 'local' or 'cloud'
+      await expect(loadLocalConfig()).rejects.toThrow('Invalid config')
+    })
+
+    test('validates endpoint has required name field', async () => {
+      const config = {
+        mode: 'local' as const,
+        endpoints: [{ base_url: 'https://test.ai' }] as any,
+      }
+      const configPath = path.join(tempDir, 'codebuff.local.json')
+      await fs.writeFile(configPath, JSON.stringify(config))
+
+      process.chdir(tempDir)
+
+      // Should fail validation - name is required
+      await expect(loadLocalConfig()).rejects.toThrow('Invalid config')
+    })
+
+    test('validates agent_binding structure', async () => {
+      const config = {
+        mode: 'local' as const,
+        endpoints: [{ name: 'test', base_url: 'https://test.ai' }],
+        agent_bindings: [{ agent_id: 'agent-1' }] as any,
+      }
+      const configPath = path.join(tempDir, 'codebuff.local.json')
+      await fs.writeFile(configPath, JSON.stringify(config))
+
+      process.chdir(tempDir)
+
+      // Should fail validation - endpoint is required in agent_binding
+      await expect(loadLocalConfig()).rejects.toThrow('Invalid config')
+    })
+
+    test('provides helpful error message for validation failures', async () => {
+      const config = {
+        mode: 'local' as const,
+        endpoints: [{ name: 'test', base_url: 'invalid-url' }],
+      }
+      const configPath = path.join(tempDir, 'codebuff.local.json')
+      await fs.writeFile(configPath, JSON.stringify(config))
+
+      process.chdir(tempDir)
+
+      try {
+        await loadLocalConfig()
+        expect(true).toBe(false) // Should not reach here
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error)
+        const errorMessage = (error as Error).message
+        expect(errorMessage).toContain('Invalid config')
+        expect(errorMessage).toContain('base_url')
+      }
     })
   })
 })
