@@ -45,6 +45,7 @@ import {
   OpenRouterError,
 } from '@/llm-api/openrouter'
 import { extractApiKeyFromHeader } from '@/util/auth'
+import { shouldBypassAuth, createLocalAuthToken } from '@/lib/auth-bypass'
 import { skipBillingChecks } from '@/lib/local-mode'
 
 export const formatQuotaResetCountdown = (
@@ -148,45 +149,59 @@ export async function postChatCompletions(params: {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user info
-    const userInfo = await getUserInfoFromApiKey({
-      apiKey,
-      fields: ['id', 'email', 'discord_id', 'stripe_customer_id', 'banned'],
-      logger,
-    })
-    if (!userInfo) {
-      trackEvent({
-        event: AnalyticsEvent.CHAT_COMPLETIONS_AUTH_ERROR,
-        userId: 'unknown',
-        properties: {
-          reason: 'Invalid API key',
-        },
+    // Check for local mode bypass
+    let userId: string
+    let stripeCustomerId: string | null
+    let userInfo: { id: string; email?: string; discord_id?: string | null; stripe_customer_id?: string | null; banned?: boolean } | undefined
+
+    if (shouldBypassAuth() && apiKey === createLocalAuthToken()) {
+      // In local mode, use a placeholder user ID
+      userId = 'local-mode-user'
+      stripeCustomerId = null
+      userInfo = { id: userId, email: 'local-mode@codebuff.local', discord_id: null, banned: false }
+      logger.info('Local mode: bypassing authentication')
+    } else {
+      // Get user info
+      const fetchedUserInfo = await getUserInfoFromApiKey({
+        apiKey,
+        fields: ['id', 'email', 'discord_id', 'stripe_customer_id', 'banned'],
         logger,
       })
-      return NextResponse.json(
-        { message: 'Invalid Codebuff API key' },
-        { status: 401 },
-      )
-    }
-    logger = loggerWithContext({ userInfo })
+      if (!fetchedUserInfo) {
+        trackEvent({
+          event: AnalyticsEvent.CHAT_COMPLETIONS_AUTH_ERROR,
+          userId: 'unknown',
+          properties: {
+            reason: 'Invalid API key',
+          },
+          logger,
+        })
+        return NextResponse.json(
+          { message: 'Invalid Codebuff API key' },
+          { status: 401 },
+        )
+      }
+      userInfo = fetchedUserInfo
+      logger = loggerWithContext({ userInfo })
 
-    const userId = userInfo.id
-    const stripeCustomerId = userInfo.stripe_customer_id ?? null
+      userId = userInfo.id
+      stripeCustomerId = userInfo.stripe_customer_id ?? null
 
-    // Check if user is banned.
-    // We use a clear, helpful message rather than a cryptic error because:
-    // 1. Legitimate users banned by mistake deserve to know what's happening
-    // 2. Bad actors will figure out they're banned regardless of the message
-    // 3. Clear messaging encourages resolution (matches our dispute notification email)
-    // 4. 403 Forbidden is the correct HTTP status for "you're not allowed"
-    if (userInfo.banned) {
-      return NextResponse.json(
-        {
-          error: 'account_suspended',
-          message: `Your account has been suspended due to billing issues. Please contact ${env.NEXT_PUBLIC_SUPPORT_EMAIL} to resolve this.`,
-        },
-        { status: 403 },
-      )
+      // Check if user is banned.
+      // We use a clear, helpful message rather than a cryptic error because:
+      // 1. Legitimate users banned by mistake deserve to know what's happening
+      // 2. Bad actors will figure out they're banned regardless of the message
+      // 3. Clear messaging encourages resolution (matches our dispute notification email)
+      // 4. 403 Forbidden is the correct HTTP status for "you're not allowed"
+      if (userInfo.banned) {
+        return NextResponse.json(
+          {
+            error: 'account_suspended',
+            message: `Your account has been suspended due to billing issues. Please contact ${env.NEXT_PUBLIC_SUPPORT_EMAIL} to resolve this.`,
+          },
+          { status: 403 },
+        )
+      }
     }
 
     // Track API request

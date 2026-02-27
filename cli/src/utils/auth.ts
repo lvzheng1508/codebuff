@@ -2,6 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
+import { isLocalModeSync } from '@codebuff/common/config/load-config'
 import { env } from '@codebuff/common/env'
 import { getCiEnv } from '@codebuff/common/env-ci'
 import { z } from 'zod'
@@ -121,11 +122,25 @@ export interface AuthTokenDetails {
 }
 
 /**
+ * Create a special auth token for local mode.
+ * This token is used to identify local mode requests without requiring
+ * actual user authentication.
+ */
+export function createLocalAuthToken(): string {
+  return 'local-mode-token'
+}
+
+/**
  * Resolve the auth token and track where it came from.
  */
 export const getAuthTokenDetails = (
   ciEnv: CiEnv = getCiEnv(),
 ): AuthTokenDetails => {
+  // Check for local mode first - skip auth in local mode
+  if (isLocalModeSync()) {
+    return { token: createLocalAuthToken(), source: 'credentials' }
+  }
+
   const userCredentials = getUserCredentials()
   if (userCredentials?.authToken) {
     return { token: userCredentials.authToken, source: 'credentials' }

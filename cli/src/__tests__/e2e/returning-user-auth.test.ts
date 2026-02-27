@@ -110,4 +110,19 @@ describe('Returning User Authentication helpers', () => {
     expect(result.email).toBe(RETURNING_USER.email)
     expect(mockGetUserInfoFromApiKey).toHaveBeenCalledTimes(1)
   })
+
+  test('should use local mode token when in local mode', () => {
+    spyOn(AuthModule, 'getConfigDir').mockReturnValue(tempConfigDir)
+    spyOn(AuthModule, 'getCredentialsPath').mockReturnValue(
+      path.join(tempConfigDir, 'credentials.json'),
+    )
+
+    // Mock isLocalModeSync to return true
+    const { isLocalModeSync } = require('@codebuff/common/config/load-config')
+    spyOn({ isLocalModeSync }, 'isLocalModeSync').mockReturnValue(true)
+
+    const details = getAuthTokenDetails()
+    expect(details.source).toBe('credentials')
+    expect(details.token).toBe('local-mode-token')
+  })
 })
