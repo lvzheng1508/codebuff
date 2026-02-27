@@ -1,0 +1,33 @@
+# Codebuff Local Configuration Example
+# Copy this file to codebuff.local.yaml and configure your endpoints
+
+# Mode: 'local' for self-hosted, 'cloud' for Codebuff official
+mode: local
+
+# Default endpoint for agents without specific bindings
+default_endpoint: openai
+
+# Available LLM endpoints
+endpoints:
+  - name: openai
+    base_url: https://api.openai.com
+    api_key: sk-your-openai-key-here
+    model: gpt-4
+
+  - name: deepseek
+    base_url: https://api.deepseek.com
+    api_key: sk-your-deepseek-key
+    model: deepseek-chat
+
+  - name: ollama
+    base_url: http://localhost:11434/v1
+    model: llama2
+
+# Optional: Map specific agents to endpoints
+agent_bindings:
+  - agent_id: base2
+    endpoint: openai
+    model: gpt-4-turbo
+
+  - agent_id: editor
+    endpoint: deepseek

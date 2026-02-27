@@ -47,6 +47,55 @@ Then just tell Codebuff what you want and it handles the rest:
 
 Codebuff will find the right files, makes changes across your codebase, and runs tests to make sure nothing breaks.
 
+## Local Mode (Self-Hosted)
+
+Codebuff can run in local mode without requiring a Codebuff account or subscription.
+
+### Setup
+
+1. Copy the example config:
+   ```bash
+   cp codebuff.local.example.yaml codebuff.local.yaml
+   ```
+
+2. Edit `codebuff.local.yaml` with your API endpoints
+
+3. Start Codebuff normally:
+   ```bash
+   codebuff
+   ```
+
+In local mode:
+- No login required
+- No credits/billing checks
+- You control which LLMs each agent uses
+
+### Configuration
+
+The config file supports multiple LLM endpoints (OpenAI, DeepSeek, Ollama, etc.) and allows you to map specific agents to specific endpoints:
+
+```yaml
+mode: local
+default_endpoint: openai
+
+endpoints:
+  - name: openai
+    base_url: https://api.openai.com
+    api_key: sk-your-key
+    model: gpt-4
+
+  - name: deepseek
+    base_url: https://api.deepseek.com
+    api_key: sk-your-key
+    model: deepseek-chat
+
+agent_bindings:
+  - agent_id: base2
+    endpoint: openai
+  - agent_id: editor
+    endpoint: deepseek
+```
+
 ## Create custom agents
 
 To get started building your own agents, start Codebuff and run the `/init` command:
