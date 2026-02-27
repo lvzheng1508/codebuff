@@ -133,13 +133,22 @@ export async function handleOpenAINonStream({
   delete openaiBody.transforms
   delete openaiBody.codebuff_metadata
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  // Get LLM client configuration for this agent
+  const clientConfig = getLlmClientForAgent(agentId, modelShortName)
+  const baseUrl = clientConfig.baseUrl.endsWith('/v1/chat/completions')
+    ? clientConfig.baseUrl
+    : `${clientConfig.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+
+  const response = await fetch(baseUrl, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${clientConfig.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(openaiBody),
+    body: JSON.stringify({
+      ...openaiBody,
+      model: clientConfig.model,
+    }),
   })
 
   if (!response.ok) {

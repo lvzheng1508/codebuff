@@ -13,6 +13,8 @@ import {
   OpenRouterErrorResponseSchema,
   OpenRouterStreamChatCompletionChunkSchema,
 } from './type/openrouter'
+import { getLlmClientForAgent } from './local-llm-factory'
+import { isLocalMode } from '@/lib/local-mode'
 
 import type { UsageData } from './helpers'
 import type { OpenRouterStreamChatCompletionChunk } from './type/openrouter'
@@ -44,8 +46,35 @@ function createOpenRouterRequest(params: {
   body: ChatCompletionRequestBody
   openrouterApiKey: string | null
   fetch: typeof globalThis.fetch
+  agentId?: string
+  model?: string
 }) {
-  const { body, openrouterApiKey, fetch } = params
+  const { body, openrouterApiKey, fetch, agentId, model } = params
+
+  // In local mode, use configured LLM endpoint instead of OpenRouter
+  if (isLocalMode() && agentId && model) {
+    const clientConfig = getLlmClientForAgent(agentId, model)
+    const baseUrl = clientConfig.baseUrl.endsWith('/v1/chat/completions')
+      ? clientConfig.baseUrl
+      : `${clientConfig.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+
+    return fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${(clientConfig.apiKey || openrouterApiKey) ?? env.OPEN_ROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...body,
+        model: clientConfig.model,
+      }),
+      // Use custom agent with extended headers timeout for deep-thinking models
+      // @ts-expect-error - dispatcher is a valid undici option not in fetch types
+      dispatcher: openrouterAgent,
+    })
+  }
+
+  // Default behavior: use OpenRouter
   return fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -119,7 +148,7 @@ export async function handleOpenRouterNonStream({
   // If n > 1, make n parallel requests
   if (n && n > 1) {
     const requests = Array.from({ length: n }, () =>
-      createOpenRouterRequest({ body, openrouterApiKey, fetch }),
+      createOpenRouterRequest({ body, openrouterApiKey, fetch, agentId, model: body.model }),
     )
 
     const responses = await Promise.all(requests)
@@ -215,6 +244,8 @@ export async function handleOpenRouterNonStream({
     body,
     openrouterApiKey,
     fetch,
+    agentId,
+    model: body.model,
   })
 
   if (!response.ok) {
@@ -301,6 +332,8 @@ export async function handleOpenRouterStream({
     body,
     openrouterApiKey,
     fetch,
+    agentId,
+    model: body.model,
   })
 
   if (!response.ok) {
