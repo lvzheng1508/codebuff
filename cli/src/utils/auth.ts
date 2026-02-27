@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-import { isLocalModeSync } from '@codebuff/common/config/load-config'
+import { isLocalModeSync, createLocalAuthToken } from '@codebuff/common/config/load-config'
 import { env } from '@codebuff/common/env'
 import { getCiEnv } from '@codebuff/common/env-ci'
 import { z } from 'zod'
@@ -119,15 +119,6 @@ export type AuthTokenSource = 'credentials' | 'environment' | null
 export interface AuthTokenDetails {
   token?: string
   source: AuthTokenSource
-}
-
-/**
- * Create a special auth token for local mode.
- * This token is used to identify local mode requests without requiring
- * actual user authentication.
- */
-export function createLocalAuthToken(): string {
-  return 'local-mode-token'
 }
 
 /**

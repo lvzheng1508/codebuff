@@ -30,6 +30,14 @@ export async function loadLocalConfig(): Promise<LocalCliConfig | null> {
 }
 
 /**
+ * Create the local mode authentication token.
+ * This token is used to bypass authentication when running in local mode.
+ */
+export function createLocalAuthToken(): string {
+  return 'local-mode-token'
+}
+
+/**
  * Synchronously check if we're in local mode by reading the config file.
  * This is a simplified check that only looks at the mode field.
  */

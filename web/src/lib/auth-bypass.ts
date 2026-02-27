@@ -1,4 +1,5 @@
 import { skipBillingChecks } from './local-mode'
+import { createLocalAuthToken } from '@codebuff/common/config/load-config'
 
 /**
  * Check if authentication should be bypassed for local mode.
@@ -9,11 +10,5 @@ export function shouldBypassAuth(): boolean {
   return skipBillingChecks() // Same condition: local mode
 }
 
-/**
- * Create a special auth token for local mode.
- * This token is used to identify local mode requests without requiring
- * actual user authentication.
- */
-export function createLocalAuthToken(): string {
-  return 'local-mode-token'
-}
+// Re-export createLocalAuthToken for convenience
+export { createLocalAuthToken }
