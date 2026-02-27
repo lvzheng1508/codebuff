@@ -5,6 +5,7 @@ import {
   extractRequestMetadata,
   insertMessageToBigQuery,
 } from './helpers'
+import { getLlmClientForAgent } from './local-llm-factory'
 
 import type { UsageData } from './helpers'
 import type { InsertMessageBigqueryFn } from '@codebuff/common/types/contracts/bigquery'
@@ -209,4 +210,29 @@ export async function handleOpenAINonStream({
       },
     ],
   }
+}
+
+export async function callOpenAIWithConfig(
+  agentId: string,
+  defaultModel: string,
+  messages: any[],
+  options: any = {}
+) {
+  const clientConfig = getLlmClientForAgent(agentId, defaultModel)
+
+  const response = await fetch(clientConfig.baseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${clientConfig.apiKey}`,
+      ...options.headers,
+    },
+    body: JSON.stringify({
+      model: clientConfig.model,
+      messages,
+      ...options.body,
+    }),
+  })
+
+  return response
 }
