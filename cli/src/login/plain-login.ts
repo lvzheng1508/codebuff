@@ -71,7 +71,7 @@ export async function runPlainLogin(): Promise<void> {
     console.log()
     console.log(green(`✓ Logged in as ${user.name} (${user.email})`))
     console.log()
-    console.log('You can now run ' + cyan('codebuff') + ' to start.')
+    console.log('You can now run ' + cyan('codebuffv2') + ' to start.')
     process.exit(0)
   } else if (result.status === 'timeout') {
     console.error(red('Login timed out. Please try again.'))

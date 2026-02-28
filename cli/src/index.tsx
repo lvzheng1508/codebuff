@@ -102,7 +102,7 @@ function parseArgs(): ParsedArgs {
   const program = new Command()
 
   program
-    .name('codebuff')
+    .name('codebuffv2')
     .description('Codebuff CLI - AI-powered coding assistant')
     .version(loadPackageVersion(), '-v, --version', 'Print the CLI version')
     .option(
