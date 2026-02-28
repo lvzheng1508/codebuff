@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { NextRequest } from 'next/server'
 
-import { postWebSearch } from '../_post'
-
 import type { TrackEventFn } from '@codebuff/common/types/contracts/analytics'
 import type {
   GetUserUsageDataFn,
@@ -25,6 +23,19 @@ describe('/api/v1/web-search POST endpoint', () => {
   let mockGetUserInfoFromApiKey: GetUserInfoFromApiKeyFn
   let mockConsumeCreditsWithFallback: ConsumeCreditsWithFallbackFn
   let mockFetch: typeof globalThis.fetch
+
+  const getPostWebSearch = () => {
+    process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'test-key'
+    process.env.GRAVITY_API_KEY = process.env.GRAVITY_API_KEY || 'test-key'
+    process.env.STRIPE_SUBSCRIPTION_100_PRICE_ID =
+      process.env.STRIPE_SUBSCRIPTION_100_PRICE_ID || 'price_test_100'
+    process.env.STRIPE_SUBSCRIPTION_200_PRICE_ID =
+      process.env.STRIPE_SUBSCRIPTION_200_PRICE_ID || 'price_test_200'
+    process.env.STRIPE_SUBSCRIPTION_500_PRICE_ID =
+      process.env.STRIPE_SUBSCRIPTION_500_PRICE_ID || 'price_test_500'
+    const { postWebSearch } = require('../_post')
+    return postWebSearch as typeof import('../_post').postWebSearch
+  }
 
   beforeEach(() => {
     mockLogger = {
@@ -70,6 +81,7 @@ describe('/api/v1/web-search POST endpoint', () => {
   })
 
   test('401 when missing API key', async () => {
+    const postWebSearch = getPostWebSearch()
     const req = new NextRequest('http://localhost:3000/api/v1/web-search', {
       method: 'POST',
       body: JSON.stringify({ query: 'foo' }),
@@ -84,11 +96,13 @@ describe('/api/v1/web-search POST endpoint', () => {
       consumeCreditsWithFallback: mockConsumeCreditsWithFallback,
       fetch: mockFetch,
       serverEnv: testServerEnv,
+      skipBillingChecksOverride: false,
     })
     expect(res.status).toBe(401)
   })
 
   test('402 when insufficient credits', async () => {
+    const postWebSearch = getPostWebSearch()
     mockGetUserUsageData = mock(async () => ({
       usageThisCycle: 0,
       balance: {
@@ -114,11 +128,13 @@ describe('/api/v1/web-search POST endpoint', () => {
       consumeCreditsWithFallback: mockConsumeCreditsWithFallback,
       fetch: mockFetch,
       serverEnv: testServerEnv,
+      skipBillingChecksOverride: false,
     })
     expect(res.status).toBe(402)
   })
 
   test('200 on success', async () => {
+    const postWebSearch = getPostWebSearch()
     const req = new NextRequest('http://localhost:3000/api/v1/web-search', {
       method: 'POST',
       headers: { Authorization: 'Bearer valid' },
@@ -134,6 +150,7 @@ describe('/api/v1/web-search POST endpoint', () => {
       consumeCreditsWithFallback: mockConsumeCreditsWithFallback,
       fetch: mockFetch,
       serverEnv: testServerEnv,
+      skipBillingChecksOverride: false,
     })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -141,6 +158,7 @@ describe('/api/v1/web-search POST endpoint', () => {
   })
 
   test('200 for subscriber with 0 a-la-carte credits but active block grant', async () => {
+    const postWebSearch = getPostWebSearch()
     mockGetUserUsageData = mock(async ({ includeSubscriptionCredits }: { includeSubscriptionCredits?: boolean }) => ({
       usageThisCycle: 0,
       balance: {
@@ -174,11 +192,13 @@ describe('/api/v1/web-search POST endpoint', () => {
       fetch: mockFetch,
       serverEnv: testServerEnv,
       ensureSubscriberBlockGrant: mockEnsureSubscriberBlockGrant,
+      skipBillingChecksOverride: false,
     })
     expect(res.status).toBe(200)
   })
 
   test('402 for non-subscriber with 0 credits and no block grant', async () => {
+    const postWebSearch = getPostWebSearch()
     mockGetUserUsageData = mock(async () => ({
       usageThisCycle: 0,
       balance: {
@@ -207,6 +227,7 @@ describe('/api/v1/web-search POST endpoint', () => {
       fetch: mockFetch,
       serverEnv: testServerEnv,
       ensureSubscriberBlockGrant: mockEnsureSubscriberBlockGrant,
+      skipBillingChecksOverride: false,
     })
     expect(res.status).toBe(402)
   })

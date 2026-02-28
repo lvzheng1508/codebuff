@@ -40,6 +40,7 @@ export async function postDocsSearch(params: {
   consumeCreditsWithFallback: ConsumeCreditsWithFallbackFn
   fetch: typeof globalThis.fetch
   ensureSubscriberBlockGrant?: (params: { userId: string; logger: Logger }) => Promise<BlockGrantResult | null>
+  skipBillingChecksOverride?: boolean
 }) {
   const {
     req,
@@ -50,6 +51,7 @@ export async function postDocsSearch(params: {
     consumeCreditsWithFallback,
     fetch,
     ensureSubscriberBlockGrant,
+    skipBillingChecksOverride,
   } = params
   const baseLogger = params.logger
 
@@ -99,6 +101,7 @@ export async function postDocsSearch(params: {
     getUserUsageData,
     consumeCreditsWithFallback,
     ensureSubscriberBlockGrant,
+    skipBillingChecksOverride,
   })
   if (!credits.ok) return credits.response
 

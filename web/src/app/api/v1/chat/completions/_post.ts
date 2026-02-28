@@ -284,8 +284,10 @@ export async function postChatCompletions(params: {
     // error/null results mean subscription grants have 0 balance, so including them is harmless.
     const includeSubscriptionCredits = !!ensureSubscriberBlockGrant
 
+    const billingChecksSkipped = skipBillingChecks()
+
     // Skip billing checks in local mode
-    if (!skipBillingChecks()) {
+    if (!billingChecksSkipped) {
       if (ensureSubscriberBlockGrant) {
         try {
           const blockGrantResult = await ensureSubscriberBlockGrant({ userId, logger })
@@ -342,15 +344,22 @@ export async function postChatCompletions(params: {
       )
     }
 
-    // Fetch user credit data (includes subscription credits when block grant was ensured)
-    // In local mode, we still fetch this for analytics/tracking purposes, but don't enforce it
-    const {
-      balance: { totalRemaining },
-      nextQuotaReset,
-    } = await getUserUsageData({ userId, logger, includeSubscriptionCredits })
+    let totalRemaining = 0
+    let nextQuotaReset: string | null = null
+
+    if (!billingChecksSkipped) {
+      // Fetch user credit data (includes subscription credits when block grant was ensured)
+      const usageData = await getUserUsageData({
+        userId,
+        logger,
+        includeSubscriptionCredits,
+      })
+      totalRemaining = usageData.balance.totalRemaining
+      nextQuotaReset = usageData.nextQuotaReset
+    }
 
     // Credit check (skip in local mode)
-    if (!skipBillingChecks()) {
+    if (!billingChecksSkipped) {
       if (totalRemaining <= 0 && !isFreeModeRequest) {
         trackEvent({
           event: AnalyticsEvent.CHAT_COMPLETIONS_INSUFFICIENT_CREDITS,
@@ -361,7 +370,7 @@ export async function postChatCompletions(params: {
           },
           logger,
         })
-        const resetCountdown = formatQuotaResetCountdown(nextQuotaReset)
+        const resetCountdown = formatQuotaResetCountdown(nextQuotaReset ?? new Date(0).toISOString())
         return NextResponse.json(
           {
             message: `Out of credits. Please add credits at ${env.NEXT_PUBLIC_CODEBUFF_APP_URL}/usage. Your free credits reset ${resetCountdown}.`,

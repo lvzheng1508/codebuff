@@ -57,13 +57,18 @@ function createOpenRouterRequest(params: {
     const baseUrl = clientConfig.baseUrl.endsWith('/v1/chat/completions')
       ? clientConfig.baseUrl
       : `${clientConfig.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+    const localApiKey =
+      (clientConfig.apiKey || openrouterApiKey) ?? env.OPEN_ROUTER_API_KEY
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (localApiKey) {
+      headers.Authorization = `Bearer ${localApiKey}`
+    }
 
     return fetch(baseUrl, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${(clientConfig.apiKey || openrouterApiKey) ?? env.OPEN_ROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         ...body,
         model: clientConfig.model,
@@ -75,14 +80,19 @@ function createOpenRouterRequest(params: {
   }
 
   // Default behavior: use OpenRouter
+  const headers: Record<string, string> = {
+    'HTTP-Referer': 'https://codebuff.com',
+    'X-Title': 'Codebuff',
+    'Content-Type': 'application/json',
+  }
+  const apiKey = openrouterApiKey ?? env.OPEN_ROUTER_API_KEY
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+
   return fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${openrouterApiKey ?? env.OPEN_ROUTER_API_KEY}`,
-      'HTTP-Referer': 'https://codebuff.com',
-      'X-Title': 'Codebuff',
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(body),
     // Use custom agent with extended headers timeout for deep-thinking models
     // @ts-expect-error - dispatcher is a valid undici option not in fetch types

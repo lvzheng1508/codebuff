@@ -6,6 +6,7 @@ import {
   isFreeModeAllowedAgentModel,
 } from '@codebuff/common/constants/free-agents'
 import { PROFIT_MARGIN } from '@codebuff/common/old-constants'
+import { skipBillingChecks } from '@/lib/local-mode'
 
 import type { InsertMessageBigqueryFn } from '@codebuff/common/types/contracts/bigquery'
 import type { Logger } from '@codebuff/common/types/contracts/logger'
@@ -131,6 +132,11 @@ export async function consumeCreditsForMessage(params: {
     logger,
     costMode,
   } = params
+
+  if (skipBillingChecks()) {
+    logger.info({ userId, agentId }, 'Local mode active: billing no-op for message')
+    return 0
+  }
 
   // Calculate initial credits based on cost
   const initialCredits = Math.round(usageData.cost * 100 * (1 + PROFIT_MARGIN))

@@ -13,6 +13,7 @@ import type { GetUserInfoFromApiKeyFn } from '@codebuff/common/types/contracts/d
 import type { Logger } from '@codebuff/common/types/contracts/logger'
 import type { NextRequest } from 'next/server'
 
+import { createLocalAuthToken, shouldBypassAuth } from '@/lib/auth-bypass'
 import { extractApiKeyFromHeader } from '@/util/auth'
 
 const usageRequestSchema = z.object({
@@ -30,6 +31,7 @@ export async function postUsage(params: {
   getOrganizationUsageResponse: GetOrganizationUsageResponseFn
   trackEvent: TrackEventFn
   logger: Logger
+  shouldBypassAuthOverride?: boolean
 }) {
   const {
     req,
@@ -38,6 +40,7 @@ export async function postUsage(params: {
     getOrganizationUsageResponse,
     trackEvent,
     logger,
+    shouldBypassAuthOverride,
   } = params
 
   try {
@@ -69,6 +72,27 @@ export async function postUsage(params: {
         { message: 'Authentication required' },
         { status: 401 },
       )
+    }
+
+    if (
+      (shouldBypassAuthOverride ?? shouldBypassAuth()) &&
+      authToken === createLocalAuthToken()
+    ) {
+      const usageResponse = {
+        type: 'usage-response' as const,
+        usage: 0,
+        remainingBalance: null,
+        balanceBreakdown: {
+          free: 0,
+          paid: 0,
+          ad: 0,
+          referral: 0,
+          admin: 0,
+        },
+        next_quota_reset: null,
+        autoTopupEnabled: false,
+      }
+      return NextResponse.json(usageResponse)
     }
 
     const userInfo = await getUserInfoFromApiKey({

@@ -16,6 +16,7 @@ import type { NextRequest } from 'next/server'
 import type { ZodType } from 'zod'
 
 import { shouldBypassAuth, createLocalAuthToken } from '@/lib/auth-bypass'
+import { skipBillingChecks } from '@/lib/local-mode'
 import { extractApiKeyFromHeader } from '@/util/auth'
 
 /**
@@ -165,6 +166,7 @@ export const checkCreditsAndCharge = async (params: {
   getUserUsageData: GetUserUsageDataFn
   consumeCreditsWithFallback: ConsumeCreditsWithFallbackFn
   ensureSubscriberBlockGrant?: (params: { userId: string; logger: Logger }) => Promise<unknown>
+  skipBillingChecksOverride?: boolean
 }): Promise<HandlerResult<{ creditsUsed: number }>> => {
   const {
     userId,
@@ -178,7 +180,13 @@ export const checkCreditsAndCharge = async (params: {
     getUserUsageData,
     consumeCreditsWithFallback,
     ensureSubscriberBlockGrant,
+    skipBillingChecksOverride,
   } = params
+
+  // Local mode uses user-provided LLM endpoints and bypasses credit enforcement.
+  if (skipBillingChecksOverride ?? skipBillingChecks()) {
+    return { ok: true, data: { creditsUsed: 0 } }
+  }
 
   // Ensure subscription block grant exists before checking credits.
   // This creates the grant (if eligible) so its credits appear in the balance below.

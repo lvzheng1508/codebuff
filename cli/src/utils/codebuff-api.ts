@@ -605,8 +605,11 @@ export async function initializeConfig(): Promise<LocalCliConfig | null> {
     }
     return config
   } catch (error) {
-    // Log error but don't fail - local config is optional
-    logger.debug(error, 'Failed to load or send local config')
+    // Config failures should be visible so users can diagnose local mode issues.
+    logger.error(
+      { error },
+      'Failed to load or send local config. Continuing without local mode.',
+    )
     return null
   }
 }

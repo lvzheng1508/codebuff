@@ -138,13 +138,16 @@ export async function handleOpenAINonStream({
   const baseUrl = clientConfig.baseUrl.endsWith('/v1/chat/completions')
     ? clientConfig.baseUrl
     : `${clientConfig.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (clientConfig.apiKey) {
+    headers.Authorization = `Bearer ${clientConfig.apiKey}`
+  }
 
   const response = await fetch(baseUrl, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${clientConfig.apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       ...openaiBody,
       model: clientConfig.model,
@@ -228,14 +231,17 @@ export async function callOpenAIWithConfig(
   options: any = {}
 ) {
   const clientConfig = getLlmClientForAgent(agentId, defaultModel)
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  }
+  if (clientConfig.apiKey) {
+    headers.Authorization = `Bearer ${clientConfig.apiKey}`
+  }
 
   const response = await fetch(clientConfig.baseUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${clientConfig.apiKey}`,
-      ...options.headers,
-    },
+    headers,
     body: JSON.stringify({
       model: clientConfig.model,
       messages,

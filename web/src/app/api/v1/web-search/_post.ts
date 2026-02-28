@@ -44,6 +44,7 @@ export async function postWebSearch(params: {
   fetch: typeof globalThis.fetch
   serverEnv: LinkupEnv
   ensureSubscriberBlockGrant?: (params: { userId: string; logger: Logger }) => Promise<BlockGrantResult | null>
+  skipBillingChecksOverride?: boolean
 }) {
   const {
     req,
@@ -55,6 +56,7 @@ export async function postWebSearch(params: {
     fetch,
     serverEnv,
     ensureSubscriberBlockGrant,
+    skipBillingChecksOverride,
   } = params
   const baseLogger = params.logger
 
@@ -106,6 +108,7 @@ export async function postWebSearch(params: {
       getUserUsageData,
       consumeCreditsWithFallback,
       ensureSubscriberBlockGrant,
+      skipBillingChecksOverride,
     })
     if (credits.ok) break
     if (attempt < 3) {
