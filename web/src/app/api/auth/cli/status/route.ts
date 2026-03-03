@@ -1,11 +1,10 @@
+import { createLocalAuthToken } from '@codebuff/common/config/load-config'
 import { genAuthCode } from '@codebuff/common/util/credentials'
-import db from '@codebuff/internal/db'
-import * as schema from '@codebuff/internal/db/schema'
 import { env } from '@codebuff/internal/env'
-import { and, eq, gt, or, isNull } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 
+import { getCurrentConfig } from '@/app/api/v1/config/store'
 import { logger } from '@/util/logger'
 
 export async function GET(req: Request) {
@@ -58,7 +57,31 @@ export async function GET(req: Request) {
     )
   }
 
+  const isLocalOrDevMode =
+    process.env.NODE_ENV !== 'production' ||
+    getCurrentConfig()?.mode === 'local'
+
+  if (isLocalOrDevMode) {
+    return NextResponse.json({
+      user: {
+        id: 'local-mode-user',
+        name: 'Local Mode',
+        email: 'local-mode@codebuff.local',
+        authToken: createLocalAuthToken(),
+        fingerprintId,
+        fingerprintHash,
+      },
+      message: 'Authentication successful!',
+    })
+  }
+
   try {
+    const [{ default: db }, schema, drizzleOrm] = await Promise.all([
+      import('@codebuff/internal/db'),
+      import('@codebuff/internal/db/schema'),
+      import('drizzle-orm'),
+    ])
+
     const users = await db
       .select({
         id: schema.user.id,
@@ -67,22 +90,25 @@ export async function GET(req: Request) {
         authToken: schema.session.sessionToken,
       })
       .from(schema.user)
-      .leftJoin(schema.session, eq(schema.user.id, schema.session.userId))
+      .leftJoin(
+        schema.session,
+        drizzleOrm.eq(schema.user.id, schema.session.userId),
+      )
       .leftJoin(
         schema.fingerprint,
-        eq(schema.session.fingerprint_id, schema.fingerprint.id),
+        drizzleOrm.eq(schema.session.fingerprint_id, schema.fingerprint.id),
       )
       .where(
-        and(
-          eq(schema.session.fingerprint_id, fingerprintId),
+        drizzleOrm.and(
+          drizzleOrm.eq(schema.session.fingerprint_id, fingerprintId),
           // Allow access if either:
           // 1. The fingerprint's sig_hash matches what the user provided (they own it)
           // 2. The fingerprint's sig_hash is null (it's unclaimed/abandoned)
-          or(
-            eq(schema.fingerprint.sig_hash, fingerprintHash),
-            isNull(schema.fingerprint.sig_hash),
+          drizzleOrm.or(
+            drizzleOrm.eq(schema.fingerprint.sig_hash, fingerprintHash),
+            drizzleOrm.isNull(schema.fingerprint.sig_hash),
           ),
-          gt(schema.session.expires, new Date()), // Only return active sessions
+          drizzleOrm.gt(schema.session.expires, new Date()), // Only return active sessions
         ),
       )
 

@@ -1,11 +1,9 @@
 import { genAuthCode } from '@codebuff/common/util/credentials'
-import db from '@codebuff/internal/db'
-import * as schema from '@codebuff/internal/db/schema'
 import { env } from '@codebuff/internal/env'
-import { and, eq, gt } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 
+import { getCurrentConfig } from '@/app/api/v1/config/store'
 import { logger } from '@/util/logger'
 
 export async function POST(req: Request) {
@@ -22,6 +20,10 @@ export async function POST(req: Request) {
   const { fingerprintId, referralCode } = result.data
 
   try {
+    const isLocalOrDevMode =
+      process.env.NODE_ENV !== 'production' ||
+      getCurrentConfig()?.mode === 'local'
+
     const expiresAt = Date.now() + 60 * 60 * 1000 // 1 hour
     const fingerprintHash = genAuthCode(
       fingerprintId,
@@ -29,31 +31,39 @@ export async function POST(req: Request) {
       env.NEXTAUTH_SECRET,
     )
 
-    // Check if this fingerprint has any active sessions
-    const existingSession = await db
-      .select({
-        userId: schema.session.userId,
-        expires: schema.session.expires,
-      })
-      .from(schema.session)
-      .where(
-        and(
-          eq(schema.session.fingerprint_id, fingerprintId),
-          gt(schema.session.expires, new Date()),
-        ),
-      )
-      .limit(1)
+    if (!isLocalOrDevMode) {
+      const [{ default: db }, schema, drizzleOrm] = await Promise.all([
+        import('@codebuff/internal/db'),
+        import('@codebuff/internal/db/schema'),
+        import('drizzle-orm'),
+      ])
 
-    if (existingSession.length > 0) {
-      // There's an active session - log this for monitoring
-      logger.info(
-        {
-          fingerprintId,
-          existingUserId: existingSession[0].userId,
-          event: 'relogin_attempt_with_active_session',
-        },
-        'Login attempt for fingerprint with active session',
-      )
+      // Check if this fingerprint has any active sessions
+      const existingSession = await db
+        .select({
+          userId: schema.session.userId,
+          expires: schema.session.expires,
+        })
+        .from(schema.session)
+        .where(
+          drizzleOrm.and(
+            drizzleOrm.eq(schema.session.fingerprint_id, fingerprintId),
+            drizzleOrm.gt(schema.session.expires, new Date()),
+          ),
+        )
+        .limit(1)
+
+      if (existingSession.length > 0) {
+        // There's an active session - log this for monitoring
+        logger.info(
+          {
+            fingerprintId,
+            existingUserId: existingSession[0].userId,
+            event: 'relogin_attempt_with_active_session',
+          },
+          'Login attempt for fingerprint with active session',
+        )
+      }
     }
 
     // Generate login URL without modifying the fingerprint record

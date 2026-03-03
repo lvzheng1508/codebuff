@@ -2,16 +2,13 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-import { isLocalModeSync, createLocalAuthToken } from '@codebuff/common/config/load-config'
+import { createLocalAuthToken } from '@codebuff/common/config/load-config'
 import { env } from '@codebuff/common/env'
-import { getCiEnv } from '@codebuff/common/env-ci'
 import { z } from 'zod'
 
 
 import { getApiClient, setApiClientAuthToken } from './codebuff-api'
 import { logger } from './logger'
-
-import type { CiEnv } from '@codebuff/common/types/contracts/env'
 
 // User schema
 const userSchema = z.object({
@@ -125,24 +122,11 @@ export interface AuthTokenDetails {
  * Resolve the auth token and track where it came from.
  */
 export const getAuthTokenDetails = (
-  ciEnv: CiEnv = getCiEnv(),
+  _ciEnv?: unknown,
 ): AuthTokenDetails => {
-  // Check for local mode first - skip auth in local mode
-  if (isLocalModeSync()) {
-    return { token: createLocalAuthToken(), source: 'credentials' }
-  }
-
-  const userCredentials = getUserCredentials()
-  if (userCredentials?.authToken) {
-    return { token: userCredentials.authToken, source: 'credentials' }
-  }
-
-  const envToken = ciEnv.CODEBUFF_API_KEY
-  if (envToken) {
-    return { token: envToken, source: 'environment' }
-  }
-
-  return { source: null }
+  void _ciEnv
+  // Local-only fork: always use the local-mode token and skip cloud auth.
+  return { token: createLocalAuthToken(), source: 'credentials' }
 }
 
 /**

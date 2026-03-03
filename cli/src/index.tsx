@@ -24,7 +24,7 @@ import { runPlainLogin } from './login/plain-login'
 import { initializeApp } from './init/init-app'
 import { getProjectRoot, setProjectRoot } from './project-files'
 import { initAnalytics, trackEvent } from './utils/analytics'
-import { getAuthToken, getAuthTokenDetails } from './utils/auth'
+import { getAuthToken } from './utils/auth'
 import { resetCodebuffClient } from './utils/codebuff-client'
 import { setApiClientAuthToken } from './utils/codebuff-api'
 import { initializeConfig } from './utils/codebuff-api'
@@ -272,16 +272,9 @@ async function main(): Promise<void> {
       React.useState(showProjectPicker)
 
     React.useEffect(() => {
-      const apiKey = getAuthTokenDetails().token ?? ''
-
-      if (!apiKey) {
-        setRequireAuth(true)
-        setHasInvalidCredentials(false)
-        return
-      }
-
-      setHasInvalidCredentials(true)
+      // Local-only fork: auth is always satisfied by local token.
       setRequireAuth(false)
+      setHasInvalidCredentials(false)
     }, [])
 
     const loadFileTree = React.useCallback(async (root: string) => {
