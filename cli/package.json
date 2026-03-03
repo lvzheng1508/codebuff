@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "codebuffv2": "./bin/codecane",
-    "codebuff-tui": "./bin/codecane"
+    "codebuffv2": "./src/index.tsx",
+    "codebuff-tui": "./src/index.tsx"
   },
   "exports": {
     ".": {

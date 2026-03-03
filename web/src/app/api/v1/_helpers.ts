@@ -15,7 +15,7 @@ import type {
 import type { NextRequest } from 'next/server'
 import type { ZodType } from 'zod'
 
-import { shouldBypassAuth, createLocalAuthToken } from '@/lib/auth-bypass'
+import { isLocalAuthToken } from '@/lib/auth-bypass'
 import { skipBillingChecks } from '@/lib/local-mode'
 import { extractApiKeyFromHeader } from '@/util/auth'
 
@@ -119,7 +119,7 @@ export const requireUserFromApiKey = async (params: {
   }
 
   // Check for local mode bypass
-  if (shouldBypassAuth() && apiKey === createLocalAuthToken()) {
+  if (isLocalAuthToken(apiKey)) {
     const localUserInfo: UserInfo = {
       id: 'local-mode-user',
       email: 'local-mode@codebuff.local',

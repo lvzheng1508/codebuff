@@ -1,11 +1,10 @@
 import { trackEvent } from '@codebuff/common/analytics'
-import db from '@codebuff/internal/db'
 
 import { postAgentRunsSteps } from './_post'
 
 import type { NextRequest } from 'next/server'
 
-import { getUserInfoFromApiKey } from '@/db/user'
+import { skipBillingChecks } from '@/lib/local-mode'
 import { logger, loggerWithContext } from '@/util/logger'
 
 export async function POST(
@@ -13,6 +12,12 @@ export async function POST(
   { params }: { params: Promise<{ runId: string }> },
 ) {
   const { runId } = await params
+  const isLocal = skipBillingChecks()
+  const getUserInfoFromApiKey = isLocal
+    ? (async () => null)
+    : (await import('@/db/user')).getUserInfoFromApiKey
+  const db = isLocal ? ({} as any) : (await import('@codebuff/internal/db')).default
+
   return postAgentRunsSteps({
     req,
     runId,

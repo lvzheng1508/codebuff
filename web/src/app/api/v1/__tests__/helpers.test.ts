@@ -31,12 +31,16 @@ describe('api v1 helpers', () => {
       debug: mock(() => {}),
     } as unknown as Logger
     const trackEvent = mock(() => {}) as unknown as TrackEventFn
-    const getUserUsageData = mock(async () => {
+    const getUserUsageDataMock = mock(async () => {
       throw new Error('should not be called in local mode')
-    }) as unknown as GetUserUsageDataFn
-    const consumeCreditsWithFallback = mock(async () => {
+    })
+    const getUserUsageData =
+      getUserUsageDataMock as unknown as GetUserUsageDataFn
+    const consumeCreditsWithFallbackMock = mock(async () => {
       throw new Error('should not be called in local mode')
-    }) as unknown as ConsumeCreditsWithFallbackFn
+    })
+    const consumeCreditsWithFallback =
+      consumeCreditsWithFallbackMock as unknown as ConsumeCreditsWithFallbackFn
 
     const result = await checkCreditsAndCharge({
       userId: 'local-mode-user',
@@ -54,8 +58,8 @@ describe('api v1 helpers', () => {
     if (result.ok) {
       expect(result.data.creditsUsed).toBe(0)
     }
-    expect(getUserUsageData.mock.calls.length).toBe(0)
-    expect(consumeCreditsWithFallback.mock.calls.length).toBe(0)
+    expect(getUserUsageDataMock.mock.calls.length).toBe(0)
+    expect(consumeCreditsWithFallbackMock.mock.calls.length).toBe(0)
   })
 
   test('checkCreditsAndCharge still enforces credits outside local mode', async () => {
@@ -68,7 +72,7 @@ describe('api v1 helpers', () => {
       debug: mock(() => {}),
     } as unknown as Logger
     const trackEvent = mock(() => {}) as unknown as TrackEventFn
-    const getUserUsageData = mock(async () => ({
+    const getUserUsageDataMock = mock(async () => ({
       usageThisCycle: 0,
       balance: {
         totalRemaining: 0,
@@ -77,11 +81,15 @@ describe('api v1 helpers', () => {
         breakdown: {},
       },
       nextQuotaReset: 'soon',
-    })) as unknown as GetUserUsageDataFn
-    const consumeCreditsWithFallback = mock(async () => ({
+    }))
+    const getUserUsageData =
+      getUserUsageDataMock as unknown as GetUserUsageDataFn
+    const consumeCreditsWithFallbackMock = mock(async () => ({
       success: true,
       value: { chargedToOrganization: false },
-    })) as unknown as ConsumeCreditsWithFallbackFn
+    }))
+    const consumeCreditsWithFallback =
+      consumeCreditsWithFallbackMock as unknown as ConsumeCreditsWithFallbackFn
 
     const result = await checkCreditsAndCharge({
       userId: 'cloud-user',
@@ -99,5 +107,7 @@ describe('api v1 helpers', () => {
     if (!result.ok) {
       expect(result.response.status).toBe(402)
     }
+    expect(getUserUsageDataMock.mock.calls.length).toBe(1)
+    expect(consumeCreditsWithFallbackMock.mock.calls.length).toBe(0)
   })
 })

@@ -2,18 +2,18 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { isLocalMode, skipBillingChecks } from '../local-mode'
 
-// Mock the config route module
-let mockGetCurrentConfig: ReturnType<typeof mock<typeof import('@/app/api/v1/config/route').getCurrentConfig>>
+// Mock the config store module
+let mockGetCurrentConfig: ReturnType<
+  typeof mock<typeof import('@/app/api/v1/config/store').getCurrentConfig>
+>
 
 describe('Local Mode', () => {
   beforeEach(() => {
     // Create a mock for getCurrentConfig
     mockGetCurrentConfig = mock(() => null)
     // Mock the entire module
-    mock.module('@/app/api/v1/config/route', () => ({
+    mock.module('@/app/api/v1/config/store', () => ({
       getCurrentConfig: mockGetCurrentConfig,
-      POST: mock(() => {}),
-      GET: mock(() => {}),
     }))
   })
 

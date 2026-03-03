@@ -7,8 +7,17 @@ import type { GetUserInfoFromApiKeyFn } from '@codebuff/common/types/contracts/d
 import type { Logger } from '@codebuff/common/types/contracts/logger'
 import type { NextRequest } from 'next/server'
 
-import { VALID_USER_INFO_FIELDS } from '@/db/user'
+import { isLocalAuthToken } from '@/lib/auth-bypass'
 import { extractApiKeyFromHeader } from '@/util/auth'
+
+const VALID_USER_INFO_FIELDS = [
+  'id',
+  'email',
+  'discord_id',
+  'referral_code',
+  'stripe_customer_id',
+  'banned',
+] as const
 
 const DERIVED_USER_INFO_FIELDS = ['referral_link'] as const
 
@@ -37,6 +46,8 @@ export async function getMe(params: {
       { status: 401 },
     )
   }
+
+  const isLocalAuth = isLocalAuthToken(apiKey)
 
   // Parse fields from query parameter
   const fieldsParam = req.nextUrl.searchParams.get('fields')
@@ -104,11 +115,20 @@ export async function getMe(params: {
   const dbFields = Array.from(dbFieldsSet)
 
   // Get user info
-  const userInfo = await getUserInfoFromApiKey({
-    apiKey,
-    fields: dbFields,
-    logger,
-  })
+  const userInfo = isLocalAuth
+    ? ({
+        id: 'local-mode-user',
+        email: 'local-mode@codebuff.local',
+        discord_id: null,
+        referral_code: null,
+        stripe_customer_id: null,
+        banned: false,
+      } as const)
+    : await getUserInfoFromApiKey({
+        apiKey,
+        fields: dbFields,
+        logger,
+      })
 
   if (!userInfo) {
     return NextResponse.json(

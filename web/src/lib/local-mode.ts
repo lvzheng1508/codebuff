@@ -1,4 +1,4 @@
-import { getCurrentConfig } from '@/app/api/v1/config/route'
+import { getCurrentConfig } from '@/app/api/v1/config/store'
 
 /**
  * Check if the application is running in local mode.

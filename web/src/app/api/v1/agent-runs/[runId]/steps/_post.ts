@@ -15,6 +15,8 @@ import type {
 import type { CodebuffPgDatabase } from '@codebuff/internal/db/types'
 import type { NextRequest } from 'next/server'
 
+import { isLocalAuthToken } from '@/lib/auth-bypass'
+import { appendLocalAgentStep } from '@/lib/local-run-store'
 import { extractApiKeyFromHeader } from '@/util/auth'
 
 const addAgentStepSchema = z.object({
@@ -56,11 +58,18 @@ export async function postAgentRunsSteps(params: {
   }
 
   // Get user info
-  const userInfo = await getUserInfoFromApiKey({
-    apiKey,
-    fields: ['id', 'email', 'discord_id'],
-    logger,
-  })
+  const isLocalAuth = isLocalAuthToken(apiKey)
+  const userInfo = isLocalAuth
+    ? {
+        id: 'local-mode-user',
+        email: 'local-mode@codebuff.local',
+        discord_id: null,
+      }
+    : await getUserInfoFromApiKey({
+        apiKey,
+        fields: ['id', 'email', 'discord_id'],
+        logger,
+      })
 
   if (!userInfo) {
     return NextResponse.json(
@@ -111,6 +120,27 @@ export async function postAgentRunsSteps(params: {
   // Skip database insert for test user
   if (userInfo.id === TEST_USER_ID) {
     return NextResponse.json({ stepId: 'test-step-id' })
+  }
+
+  if (isLocalAuth) {
+    const localStep = appendLocalAgentStep({
+      runId,
+      userId: userInfo.id,
+      stepNumber,
+      credits,
+      childRunIds,
+      messageId,
+      status,
+      errorMessage,
+      startTime,
+    })
+    if (!localStep.ok) {
+      return NextResponse.json(
+        { error: localStep.status === 404 ? 'Agent run not found' : 'Unauthorized to add steps to this run' },
+        { status: localStep.status },
+      )
+    }
+    return NextResponse.json({ stepId: localStep.stepId })
   }
 
   // Verify the run belongs to the authenticated user

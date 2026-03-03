@@ -1,4 +1,4 @@
-import { getCurrentConfig } from '@/app/api/v1/config/route'
+import { getCurrentConfig } from '@/app/api/v1/config/store'
 import type { LocalEndpoint, AgentModelBinding } from '@codebuff/common/config/local-config.types'
 
 export interface LlmClientConfig {
@@ -27,7 +27,9 @@ export function getLlmClientForAgent(agentId: string, defaultModel: string): Llm
   }
 
   // Find agent-specific binding
-  const binding = config.agent_bindings?.find(b => b.agent_id === agentId)
+  const binding = config.agent_bindings?.find(
+    (b: AgentModelBinding) => b.agent_id === agentId,
+  )
   const endpointName = binding?.endpoint || config.default_endpoint
 
   if (!endpointName) {
@@ -38,9 +40,13 @@ export function getLlmClientForAgent(agentId: string, defaultModel: string): Llm
     )
   }
 
-  const endpoint = config.endpoints.find(e => e.name === endpointName)
+  const endpoint = config.endpoints.find(
+    (e: LocalEndpoint) => e.name === endpointName,
+  )
   if (!endpoint) {
-    const availableEndpoints = config.endpoints.map(e => e.name).join(', ')
+    const availableEndpoints = config.endpoints
+      .map((e: LocalEndpoint) => e.name)
+      .join(', ')
     throw new Error(
       `Endpoint "${endpointName}" not found in config. ` +
       `Available endpoints: ${availableEndpoints}. ` +

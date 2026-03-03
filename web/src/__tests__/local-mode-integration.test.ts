@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { POST, GET, getCurrentConfig } from '../app/api/v1/config/route'
+import { POST, GET } from '../app/api/v1/config/route'
+import { getCurrentConfig } from '../app/api/v1/config/store'
 import type { LocalCliConfig } from '@codebuff/common/config/local-config.types'
 
 // Helper to create a mock NextRequest

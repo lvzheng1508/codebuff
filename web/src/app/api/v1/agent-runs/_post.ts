@@ -15,6 +15,8 @@ import type {
 import type { CodebuffPgDatabase } from '@codebuff/internal/db/types'
 import type { NextRequest } from 'next/server'
 
+import { isLocalAuthToken } from '@/lib/auth-bypass'
+import { createLocalAgentRun, finishLocalAgentRun } from '@/lib/local-run-store'
 import { extractApiKeyFromHeader } from '@/util/auth'
 
 const agentRunsStartSchema = z.object({
@@ -190,11 +192,18 @@ export async function postAgentRuns(params: {
   }
 
   // Get user info
-  const userInfo = await getUserInfoFromApiKey({
-    apiKey,
-    fields: ['id', 'email', 'discord_id'],
-    logger,
-  })
+  const isLocalAuth = isLocalAuthToken(apiKey)
+  const userInfo = isLocalAuth
+    ? {
+        id: 'local-mode-user',
+        email: 'local-mode@codebuff.local',
+        discord_id: null,
+      }
+    : await getUserInfoFromApiKey({
+        apiKey,
+        fields: ['id', 'email', 'discord_id'],
+        logger,
+      })
 
   if (!userInfo) {
     return NextResponse.json(
@@ -243,6 +252,14 @@ export async function postAgentRuns(params: {
 
   // Route to appropriate handler
   if (data.action === 'START') {
+    if (isLocalAuth) {
+      const runId = createLocalAgentRun({
+        userId: userInfo.id,
+        agentId: data.agentId,
+        ancestorRunIds: data.ancestorRunIds,
+      })
+      return NextResponse.json({ runId })
+    }
     return handleStartAction({
       data,
       userId: userInfo.id,
@@ -253,6 +270,17 @@ export async function postAgentRuns(params: {
   }
 
   if (data.action === 'FINISH') {
+    if (isLocalAuth) {
+      finishLocalAgentRun({
+        runId: data.runId,
+        status: data.status,
+        totalSteps: data.totalSteps,
+        directCredits: data.directCredits,
+        totalCredits: data.totalCredits,
+        errorMessage: data.errorMessage,
+      })
+      return NextResponse.json({ success: true })
+    }
     return handleFinishAction({
       data,
       userId: userInfo.id,

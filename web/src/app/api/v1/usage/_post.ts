@@ -13,7 +13,7 @@ import type { GetUserInfoFromApiKeyFn } from '@codebuff/common/types/contracts/d
 import type { Logger } from '@codebuff/common/types/contracts/logger'
 import type { NextRequest } from 'next/server'
 
-import { createLocalAuthToken, shouldBypassAuth } from '@/lib/auth-bypass'
+import { createLocalAuthToken, isLocalAuthToken } from '@/lib/auth-bypass'
 import { extractApiKeyFromHeader } from '@/util/auth'
 
 const usageRequestSchema = z.object({
@@ -75,8 +75,9 @@ export async function postUsage(params: {
     }
 
     if (
-      (shouldBypassAuthOverride ?? shouldBypassAuth()) &&
-      authToken === createLocalAuthToken()
+      shouldBypassAuthOverride
+        ? authToken === createLocalAuthToken()
+        : isLocalAuthToken(authToken)
     ) {
       const usageResponse = {
         type: 'usage-response' as const,

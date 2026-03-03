@@ -45,7 +45,8 @@ import {
   OpenRouterError,
 } from '@/llm-api/openrouter'
 import { extractApiKeyFromHeader } from '@/util/auth'
-import { shouldBypassAuth, createLocalAuthToken } from '@/lib/auth-bypass'
+import { isLocalAuthToken } from '@/lib/auth-bypass'
+import { getLocalAgentRun } from '@/lib/local-run-store'
 import { skipBillingChecks } from '@/lib/local-mode'
 
 export const formatQuotaResetCountdown = (
@@ -154,7 +155,9 @@ export async function postChatCompletions(params: {
     let stripeCustomerId: string | null
     let userInfo: { id: string; email?: string; discord_id?: string | null; stripe_customer_id?: string | null; banned?: boolean } | undefined
 
-    if (shouldBypassAuth() && apiKey === createLocalAuthToken()) {
+    const isLocalAuth = isLocalAuthToken(apiKey)
+
+    if (isLocalAuth) {
       // In local mode, use a placeholder user ID
       userId = 'local-mode-user'
       stripeCustomerId = null
@@ -237,29 +240,52 @@ export async function postChatCompletions(params: {
       )
     }
 
-    // Get and validate agent run
-    const agentRun = await getAgentRunFromId({
-      runId: runIdFromBody,
-      userId,
-      fields: ['agent_id', 'status'],
-    })
-    if (!agentRun) {
-      trackEvent({
-        event: AnalyticsEvent.CHAT_COMPLETIONS_VALIDATION_ERROR,
-        userId,
-        properties: {
-          error: 'Agent run not found',
-          runId: runIdFromBody,
-        },
-        logger,
-      })
-      return NextResponse.json(
-        { message: `runId Not Found: ${runIdFromBody}` },
-        { status: 400 },
-      )
-    }
+    let agentId: string
+    let agentRunStatus: string
 
-    const { agent_id: agentId, status: agentRunStatus } = agentRun
+    if (isLocalAuth) {
+      const localRun = getLocalAgentRun({ runId: runIdFromBody, userId })
+      if (!localRun) {
+        trackEvent({
+          event: AnalyticsEvent.CHAT_COMPLETIONS_VALIDATION_ERROR,
+          userId,
+          properties: {
+            error: 'Agent run not found',
+            runId: runIdFromBody,
+          },
+          logger,
+        })
+        return NextResponse.json(
+          { message: `runId Not Found: ${runIdFromBody}` },
+          { status: 400 },
+        )
+      }
+      agentId = localRun.agentId
+      agentRunStatus = localRun.status
+    } else {
+      const agentRun = await getAgentRunFromId({
+        runId: runIdFromBody,
+        userId,
+        fields: ['agent_id', 'status'],
+      })
+      if (!agentRun) {
+        trackEvent({
+          event: AnalyticsEvent.CHAT_COMPLETIONS_VALIDATION_ERROR,
+          userId,
+          properties: {
+            error: 'Agent run not found',
+            runId: runIdFromBody,
+          },
+          logger,
+        })
+        return NextResponse.json(
+          { message: `runId Not Found: ${runIdFromBody}` },
+          { status: 400 },
+        )
+      }
+      agentId = agentRun.agent_id
+      agentRunStatus = agentRun.status
+    }
 
     if (agentRunStatus !== 'running') {
       trackEvent({

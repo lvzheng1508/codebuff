@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { LocalCliConfig } from '@codebuff/common/config/local-config.types'
 
-// Store config in memory (per-session)
-let currentConfig: LocalCliConfig | null = null
+import { getCurrentConfig, setCurrentConfig } from './store'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    currentConfig = body.config as LocalCliConfig | null
+    setCurrentConfig(body.config as LocalCliConfig | null)
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json(
@@ -18,9 +17,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ config: currentConfig })
-}
-
-export function getCurrentConfig(): LocalCliConfig | null {
-  return currentConfig
+  return NextResponse.json({ config: getCurrentConfig() })
 }

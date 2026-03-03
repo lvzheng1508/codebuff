@@ -1,6 +1,32 @@
-import { clientEnvSchema, clientProcessEnv } from './env-schema'
+import { isLocalModeSync } from './config/load-config'
+import { clientEnvSchema, getClientProcessEnv } from './env-schema'
 
-const parsedEnv = clientEnvSchema.safeParse(clientProcessEnv)
+const isCI = process.env.CI === 'true' || process.env.CI === '1'
+const shouldProvideDefaults =
+  isCI || isLocalModeSync() || process.env.NODE_ENV !== 'production'
+
+if (shouldProvideDefaults) {
+  const ensureEnvDefault = (key: string, value: string) => {
+    if (!process.env[key]) {
+      process.env[key] = value
+    }
+  }
+
+  ensureEnvDefault('NEXT_PUBLIC_CB_ENVIRONMENT', 'dev')
+  ensureEnvDefault('NEXT_PUBLIC_CODEBUFF_APP_URL', 'http://localhost:3000')
+  ensureEnvDefault('NEXT_PUBLIC_SUPPORT_EMAIL', 'support@codebuff.local')
+  ensureEnvDefault('NEXT_PUBLIC_POSTHOG_API_KEY', 'disabled')
+  ensureEnvDefault('NEXT_PUBLIC_POSTHOG_HOST_URL', 'http://localhost')
+  ensureEnvDefault('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', 'pk_test_disabled')
+  ensureEnvDefault('NEXT_PUBLIC_STRIPE_CUSTOMER_PORTAL', 'http://localhost')
+  ensureEnvDefault('NEXT_PUBLIC_WEB_PORT', '3000')
+}
+
+if (process.env.NEXT_PUBLIC_CB_ENVIRONMENT === 'local') {
+  process.env.NEXT_PUBLIC_CB_ENVIRONMENT = 'dev'
+}
+
+const parsedEnv = clientEnvSchema.safeParse(getClientProcessEnv())
 if (!parsedEnv.success) {
   throw parsedEnv.error
 }

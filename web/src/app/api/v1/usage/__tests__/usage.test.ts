@@ -23,7 +23,9 @@ describe('/api/v1/usage POST endpoint', () => {
       info: mock(() => {}),
       debug: mock(() => {}),
     } as unknown as Logger
-    const getUserInfoFromApiKey = mock(async () => null) as unknown as GetUserInfoFromApiKeyFn
+    const getUserInfoFromApiKeyMock = mock(async () => null)
+    const getUserInfoFromApiKey =
+      getUserInfoFromApiKeyMock as unknown as GetUserInfoFromApiKeyFn
     const getUserUsageData = mock(async () => {
       throw new Error('should not be called in local mode')
     }) as unknown as GetUserUsageDataFn
@@ -55,6 +57,6 @@ describe('/api/v1/usage POST endpoint', () => {
     expect(body.type).toBe('usage-response')
     expect(body.usage).toBe(0)
     expect(body.remainingBalance).toBeNull()
-    expect(getUserInfoFromApiKey.mock.calls.length).toBe(0)
+    expect(getUserInfoFromApiKeyMock.mock.calls.length).toBe(0)
   })
 })
