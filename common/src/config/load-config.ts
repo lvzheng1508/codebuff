@@ -27,12 +27,23 @@ const LocalConfigSchema = z.object({
 })
 
 function getConfigPaths(): string[] {
-  return [
-    path.join(process.cwd(), 'codebuff.local.yaml'),
-    path.join(process.cwd(), 'codebuff.local.json'),
-    path.join(process.cwd(), '../codebuff.local.yaml'),
-    path.join(process.cwd(), '../codebuff.local.json'),
+  const homeDir = process.env.HOME || process.env.USERPROFILE || ''
+  const xdgConfigHome =
+    process.env.XDG_CONFIG_HOME ||
+    (homeDir ? path.join(homeDir, '.config') : '')
+  const globalConfigDir = path.join(xdgConfigHome, 'manicode')
+  const globalFiles = [
+    path.join(globalConfigDir, 'codebuff.local.json'),
+    path.join(globalConfigDir, 'codebuff.local.yaml'),
+    ...(homeDir
+      ? [
+          path.join(homeDir, '.codebuff.local.json'),
+          path.join(homeDir, '.codebuff.local.yaml'),
+        ]
+      : []),
   ]
+
+  return Array.from(new Set(globalFiles))
 }
 
 export async function loadLocalConfig(): Promise<LocalCliConfig | null> {
@@ -71,6 +82,42 @@ export async function loadLocalConfig(): Promise<LocalCliConfig | null> {
 }
 
 /**
+ * Synchronously load and validate local config from known locations.
+ * Returns null when no config file is found.
+ */
+export function loadLocalConfigSync(): LocalCliConfig | null {
+  for (const configPath of getConfigPaths()) {
+    if (!existsSync(configPath)) {
+      continue
+    }
+    try {
+      const content = fsSync.readFileSync(configPath, 'utf-8')
+      let parsed: unknown
+
+      if (configPath.endsWith('.json')) {
+        parsed = JSON.parse(content)
+      } else {
+        const yaml = require('js-yaml')
+        parsed = yaml.load(content)
+      }
+      return LocalConfigSchema.parse(parsed)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const formattedErrors = error.issues
+          .map((issue) => {
+            const path = issue.path.join('.')
+            return `  - ${path}: ${issue.message}`
+          })
+          .join('\n')
+        throw new Error(`Invalid config in ${configPath}:\n${formattedErrors}`)
+      }
+      throw error
+    }
+  }
+  return null
+}
+
+/**
  * Create the local mode authentication token.
  * This token is used to bypass authentication when running in local mode.
  */
@@ -84,25 +131,11 @@ export function createLocalAuthToken(): string {
  * Note: This does NOT perform full validation - for that, use loadLocalConfig().
  */
 export function isLocalModeSync(): boolean {
-  for (const configPath of getConfigPaths()) {
-    if (existsSync(configPath)) {
-      try {
-        const content = fsSync.readFileSync(configPath, 'utf-8')
-        let config: unknown
-        if (configPath.endsWith('.json')) {
-          config = JSON.parse(content)
-        } else {
-          // YAML parsing - use js-yaml
-          const yaml = require('js-yaml')
-          config = yaml.load(content)
-        }
-        // Use safe mode check without full validation
-        return (config as any)?.mode === 'local'
-      } catch (error) {
-        // If we can't read the config, assume not in local mode
-        return false
-      }
-    }
+  try {
+    const config = loadLocalConfigSync()
+    return config?.mode === 'local'
+  } catch {
+    // If we can't read the config, assume not in local mode
+    return false
   }
-  return false
 }

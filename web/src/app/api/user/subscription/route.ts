@@ -42,6 +42,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Local-only mode: no cloud subscription data.
+  if (userId === 'local-mode-user') {
+    const response: NoSubscriptionResponse = {
+      hasSubscription: false,
+      fallbackToALaCarte: false,
+    }
+    return NextResponse.json(response)
+  }
+
   // Fetch user preference for always use a-la-carte
   const [subscription, userPrefs] = await Promise.all([
     getActiveSubscription({ userId, logger }),

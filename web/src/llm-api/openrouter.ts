@@ -42,6 +42,33 @@ type LineResult = {
   billedCredits?: number
 }
 
+function buildLocalOpenAICompatibleBody(params: {
+  body: ChatCompletionRequestBody
+  model: string
+}): Record<string, unknown> {
+  const { body, model } = params
+  const payload: Record<string, unknown> = {
+    ...body,
+    model,
+  }
+
+  // Strip Codebuff/OpenRouter-specific fields for third-party OpenAI-compatible endpoints.
+  delete payload.codebuff_metadata
+  delete payload.provider
+  delete payload.transforms
+  delete payload.usage
+
+  // Normalize token limit field for providers that only accept max_completion_tokens.
+  payload.max_completion_tokens =
+    payload.max_completion_tokens ?? payload.max_tokens
+  delete payload.max_tokens
+
+  // Conservative compatibility: do not forward reasoning controls to generic providers.
+  delete payload.reasoning
+
+  return payload
+}
+
 function createOpenRouterRequest(params: {
   body: ChatCompletionRequestBody
   openrouterApiKey: string | null
@@ -54,9 +81,12 @@ function createOpenRouterRequest(params: {
   // In local mode, use configured LLM endpoint instead of OpenRouter
   if (isLocalMode() && agentId && model) {
     const clientConfig = getLlmClientForAgent(agentId, model)
-    const baseUrl = clientConfig.baseUrl.endsWith('/v1/chat/completions')
-      ? clientConfig.baseUrl
-      : `${clientConfig.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+    const normalizedBase = clientConfig.baseUrl.replace(/\/+$/, '')
+    const baseUrl = normalizedBase.endsWith('/chat/completions')
+      ? normalizedBase
+      : /\/v\d+$/.test(normalizedBase)
+        ? `${normalizedBase}/chat/completions`
+        : `${normalizedBase}/v1/chat/completions`
     const localApiKey =
       (clientConfig.apiKey || openrouterApiKey) ?? env.OPEN_ROUTER_API_KEY
     const headers: Record<string, string> = {
@@ -69,10 +99,12 @@ function createOpenRouterRequest(params: {
     return fetch(baseUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        ...body,
-        model: clientConfig.model,
-      }),
+      body: JSON.stringify(
+        buildLocalOpenAICompatibleBody({
+          body,
+          model: clientConfig.model,
+        }),
+      ),
       // Use custom agent with extended headers timeout for deep-thinking models
       // @ts-expect-error - dispatcher is a valid undici option not in fetch types
       dispatcher: openrouterAgent,

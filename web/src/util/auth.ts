@@ -1,5 +1,6 @@
 import db from '@codebuff/internal/db'
 import * as schema from '@codebuff/internal/db/schema'
+import { createLocalAuthToken } from '@codebuff/common/config/load-config'
 import { and, eq, gt } from 'drizzle-orm'
 
 import type { NextRequest } from 'next/server'
@@ -11,6 +12,14 @@ import type { NextRequest } from 'next/server'
 export async function getUserIdFromSessionToken(
   sessionToken: string,
 ): Promise<string | null> {
+  // Local-only mode: bypass DB session lookup for local auth token.
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    sessionToken === createLocalAuthToken()
+  ) {
+    return 'local-mode-user'
+  }
+
   const session = await db.query.session.findFirst({
     where: and(
       eq(schema.session.sessionToken, sessionToken),

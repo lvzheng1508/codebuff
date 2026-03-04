@@ -36,6 +36,8 @@ import type { NextRequest } from 'next/server'
 import type { ChatCompletionRequestBody } from '@/llm-api/types'
 
 import {
+  handleOpenAICompatibleNonStream,
+  handleOpenAICompatibleStream,
   handleOpenAINonStream,
   OPENAI_SUPPORTED_MODELS,
 } from '@/llm-api/openai'
@@ -225,7 +227,10 @@ export async function postChatCompletions(params: {
 
     // Extract and validate agent run ID
     const runIdFromBody = typedBody.codebuff_metadata?.run_id
-    if (!runIdFromBody || typeof runIdFromBody !== 'string') {
+    if (
+      (!runIdFromBody || typeof runIdFromBody !== 'string') &&
+      !isLocalAuth
+    ) {
       trackEvent({
         event: AnalyticsEvent.CHAT_COMPLETIONS_VALIDATION_ERROR,
         userId,
@@ -244,27 +249,24 @@ export async function postChatCompletions(params: {
     let agentRunStatus: string
 
     if (isLocalAuth) {
-      const localRun = getLocalAgentRun({ runId: runIdFromBody, userId })
+      const localRun =
+        typeof runIdFromBody === 'string'
+          ? getLocalAgentRun({ runId: runIdFromBody, userId })
+          : null
       if (!localRun) {
-        trackEvent({
-          event: AnalyticsEvent.CHAT_COMPLETIONS_VALIDATION_ERROR,
-          userId,
-          properties: {
-            error: 'Agent run not found',
-            runId: runIdFromBody,
-          },
-          logger,
-        })
-        return NextResponse.json(
-          { message: `runId Not Found: ${runIdFromBody}` },
-          { status: 400 },
+        logger.info(
+          { userId, runId: runIdFromBody },
+          'Local mode: run not found, continuing with default agent context',
         )
+        agentId = 'local-default-agent'
+      } else {
+        agentId = localRun.agentId
       }
-      agentId = localRun.agentId
-      agentRunStatus = localRun.status
+      // Local-only mode: do not block on run lifecycle state.
+      agentRunStatus = 'running'
     } else {
       const agentRun = await getAgentRunFromId({
-        runId: runIdFromBody,
+        runId: runIdFromBody!,
         userId,
         fields: ['agent_id', 'status'],
       })
@@ -310,7 +312,7 @@ export async function postChatCompletions(params: {
     // error/null results mean subscription grants have 0 balance, so including them is harmless.
     const includeSubscriptionCredits = !!ensureSubscriberBlockGrant
 
-    const billingChecksSkipped = skipBillingChecks()
+    const billingChecksSkipped = isLocalAuth || skipBillingChecks()
 
     // Skip billing checks in local mode
     if (!billingChecksSkipped) {
@@ -412,16 +414,22 @@ export async function postChatCompletions(params: {
     try {
       if (bodyStream) {
         // Streaming request
-        const stream = await handleOpenRouterStream({
-          body: typedBody,
-          userId,
-          stripeCustomerId,
-          agentId,
-          openrouterApiKey,
-          fetch,
-          logger,
-          insertMessageBigquery,
-        })
+        const stream = billingChecksSkipped
+          ? await handleOpenAICompatibleStream({
+              body: typedBody,
+              agentId,
+              fetch,
+            })
+          : await handleOpenRouterStream({
+              body: typedBody,
+              userId,
+              stripeCustomerId,
+              agentId,
+              openrouterApiKey,
+              fetch,
+              logger,
+              insertMessageBigquery,
+            })
 
         trackEvent({
           event: AnalyticsEvent.CHAT_COMPLETIONS_STREAM_STARTED,
@@ -454,7 +462,17 @@ export async function postChatCompletions(params: {
         const shouldUseOpenAIEndpoint =
           isOpenAIDirectModel && typedBody.codebuff_metadata?.n !== undefined
 
-        const nonStreamRequest = shouldUseOpenAIEndpoint
+        const nonStreamRequest = billingChecksSkipped
+          ? handleOpenAICompatibleNonStream({
+              body: typedBody,
+              userId,
+              stripeCustomerId,
+              agentId,
+              fetch,
+              logger,
+              insertMessageBigquery,
+            })
+          : shouldUseOpenAIEndpoint
           ? handleOpenAINonStream({
               body: typedBody,
               userId,

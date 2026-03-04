@@ -1,0 +1,12 @@
+{
+  "mode": "local",
+  "default_endpoint": "glm",
+  "endpoints": [
+    {
+      "name": "glm",
+      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "api_key": "a216c78bd42444be9974bfdbcc7f2cf3.b40NGnp6TAZr76lw",
+      "model": "GLM-4.7"
+    }
+  ]
+}

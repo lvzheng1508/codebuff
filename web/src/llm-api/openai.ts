@@ -39,6 +39,55 @@ type OpenAIUsage = {
   cost_details?: { upstream_inference_cost?: number | null } | null
 }
 
+function toChatCompletionsUrl(baseUrl: string): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, '')
+  if (normalizedBase.endsWith('/chat/completions')) {
+    return normalizedBase
+  }
+  // OpenAI-compatible vendors often expose versioned roots like /v1 or /v4.
+  // In these cases we should append /chat/completions (not /v1/chat/completions).
+  if (/\/v\d+$/.test(normalizedBase)) {
+    return `${normalizedBase}/chat/completions`
+  }
+  return `${normalizedBase}/v1/chat/completions`
+}
+
+function buildOpenAICompatibleBody(params: {
+  body: ChatCompletionRequestBody
+  model: string
+  forceStream?: boolean
+}): Record<string, unknown> {
+  const { body, model, forceStream } = params
+  const openaiBody: Record<string, unknown> = {
+    ...body,
+    model,
+    ...(forceStream !== undefined ? { stream: forceStream } : {}),
+  }
+
+  openaiBody.max_completion_tokens =
+    openaiBody.max_completion_tokens ?? openaiBody.max_tokens
+  delete openaiBody.max_tokens
+
+  if (openaiBody.reasoning && typeof openaiBody.reasoning === 'object') {
+    const reasoning = openaiBody.reasoning as {
+      enabled?: boolean
+      effort?: 'high' | 'medium' | 'low'
+    }
+    if (reasoning.enabled ?? true) {
+      openaiBody.reasoning_effort = reasoning.effort ?? 'medium'
+    }
+  }
+  delete openaiBody.reasoning
+
+  delete openaiBody.stop
+  delete openaiBody.usage
+  delete openaiBody.provider
+  delete openaiBody.transforms
+  delete openaiBody.codebuff_metadata
+
+  return openaiBody
+}
+
 function extractUsageAndCost(
   usage: OpenAIUsage,
   model: OpenAIModel,
@@ -100,44 +149,18 @@ export async function handleOpenAINonStream({
   }
 
   // Build OpenAI-compatible body
-  const openaiBody: Record<string, unknown> = {
-    ...body,
+  const openaiBody = buildOpenAICompatibleBody({
+    body,
     model: modelShortName,
-    stream: false,
-    ...(n && { n }),
+    forceStream: false,
+  })
+  if (n) {
+    openaiBody.n = n
   }
-
-  // Transform max_tokens to max_completion_tokens
-  openaiBody.max_completion_tokens =
-    openaiBody.max_completion_tokens ?? openaiBody.max_tokens
-  delete openaiBody.max_tokens
-
-  // Transform reasoning to reasoning_effort
-  if (openaiBody.reasoning && typeof openaiBody.reasoning === 'object') {
-    const reasoning = openaiBody.reasoning as {
-      enabled?: boolean
-      effort?: 'high' | 'medium' | 'low'
-    }
-    const enabled = reasoning.enabled ?? true
-
-    if (enabled) {
-      openaiBody.reasoning_effort = reasoning.effort ?? 'medium'
-    }
-  }
-  delete openaiBody.reasoning
-
-  // Remove fields that OpenAI doesn't support
-  delete openaiBody.stop
-  delete openaiBody.usage
-  delete openaiBody.provider
-  delete openaiBody.transforms
-  delete openaiBody.codebuff_metadata
 
   // Get LLM client configuration for this agent
   const clientConfig = getLlmClientForAgent(agentId, modelShortName)
-  const baseUrl = clientConfig.baseUrl.endsWith('/v1/chat/completions')
-    ? clientConfig.baseUrl
-    : `${clientConfig.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+  const baseUrl = toChatCompletionsUrl(clientConfig.baseUrl)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
@@ -222,6 +245,157 @@ export async function handleOpenAINonStream({
       },
     ],
   }
+}
+
+export async function handleOpenAICompatibleNonStream(params: {
+  body: ChatCompletionRequestBody
+  userId: string
+  stripeCustomerId?: string | null
+  agentId: string
+  fetch: typeof globalThis.fetch
+  logger: Logger
+  insertMessageBigquery: InsertMessageBigqueryFn
+}) {
+  const { body, userId, stripeCustomerId, agentId, fetch, logger, insertMessageBigquery } =
+    params
+  const startTime = new Date()
+  const { clientId, clientRequestId, costMode } = extractRequestMetadata({
+    body,
+    logger,
+  })
+
+  const rawModel = typeof body.model === 'string' ? body.model : 'unknown'
+  const shortModel = rawModel.includes('/') ? rawModel.split('/').at(-1)! : rawModel
+
+  const clientConfig = getLlmClientForAgent(agentId, shortModel)
+  const baseUrl = toChatCompletionsUrl(clientConfig.baseUrl)
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (clientConfig.apiKey) {
+    headers.Authorization = `Bearer ${clientConfig.apiKey}`
+  }
+
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(
+      buildOpenAICompatibleBody({
+        body,
+        model: clientConfig.model,
+        forceStream: false,
+      }),
+    ),
+  })
+  if (!response.ok) {
+    throw new Error(
+      `OpenAI-compatible API error: ${response.status} ${response.statusText} ${await response.text()}`,
+    )
+  }
+
+  const data = await response.json()
+  const usage = (data?.usage ?? {}) as OpenAIUsage
+  const usageData: UsageData = {
+    inputTokens: usage.prompt_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? 0,
+    cacheReadInputTokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
+    reasoningTokens: usage.completion_tokens_details?.reasoning_tokens ?? 0,
+    cost: 0,
+  }
+
+  if (data.usage) {
+    data.usage.cost = 0
+    data.usage.cost_details = { upstream_inference_cost: null }
+  }
+
+  const responseContents: string[] = []
+  if (Array.isArray(data?.choices)) {
+    for (const choice of data.choices) {
+      responseContents.push(choice?.message?.content ?? '')
+    }
+  }
+  const responseText = JSON.stringify(responseContents)
+  const reasoningText = ''
+
+  insertMessageToBigQuery({
+    messageId: data.id,
+    userId,
+    startTime,
+    request: body,
+    reasoningText,
+    responseText,
+    usageData,
+    logger,
+    insertMessageBigquery,
+  }).catch((error) => {
+    logger.error(
+      { error },
+      'Failed to insert message into BigQuery (OpenAI-compatible)',
+    )
+  })
+
+  await consumeCreditsForMessage({
+    messageId: data.id,
+    userId,
+    stripeCustomerId,
+    agentId,
+    clientId,
+    clientRequestId,
+    startTime,
+    model: data.model ?? clientConfig.model,
+    reasoningText,
+    responseText,
+    usageData,
+    byok: false,
+    logger,
+    costMode,
+  })
+
+  return {
+    ...data,
+    choices: [
+      {
+        index: 0,
+        message: { content: responseText, role: 'assistant' },
+        finish_reason: 'stop',
+      },
+    ],
+  }
+}
+
+export async function handleOpenAICompatibleStream(params: {
+  body: ChatCompletionRequestBody
+  agentId: string
+  fetch: typeof globalThis.fetch
+}) {
+  const { body, agentId, fetch } = params
+  const rawModel = typeof body.model === 'string' ? body.model : 'unknown'
+  const shortModel = rawModel.includes('/') ? rawModel.split('/').at(-1)! : rawModel
+  const clientConfig = getLlmClientForAgent(agentId, shortModel)
+  const baseUrl = toChatCompletionsUrl(clientConfig.baseUrl)
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (clientConfig.apiKey) {
+    headers.Authorization = `Bearer ${clientConfig.apiKey}`
+  }
+
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(
+      buildOpenAICompatibleBody({
+        body,
+        model: clientConfig.model,
+        forceStream: true,
+      }),
+    ),
+  })
+  if (!response.ok) {
+    throw new Error(
+      `OpenAI-compatible stream API error: ${response.status} ${response.statusText} ${await response.text()}`,
+    )
+  }
+  if (!response.body) {
+    throw new Error('OpenAI-compatible stream API returned empty body')
+  }
+  return response.body
 }
 
 export async function callOpenAIWithConfig(

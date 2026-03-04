@@ -1,4 +1,5 @@
 import { getCurrentConfig } from '@/app/api/v1/config/store'
+import { loadLocalConfigSync } from '@codebuff/common/config/load-config'
 import type { LocalEndpoint, AgentModelBinding } from '@codebuff/common/config/local-config.types'
 
 export interface LlmClientConfig {
@@ -13,7 +14,7 @@ function getEnv() {
 }
 
 export function getLlmClientForAgent(agentId: string, defaultModel: string): LlmClientConfig {
-  const config = getCurrentConfig()
+  const config = getCurrentConfig() ?? loadLocalConfigSync()
 
   if (!config || config.mode !== 'local') {
     // Use default behavior (env vars, existing logic)
@@ -55,9 +56,17 @@ export function getLlmClientForAgent(agentId: string, defaultModel: string): Llm
   }
 
   const env = getEnv()
+  const endpointApiKey = endpoint.api_key?.trim()
+  if (!endpointApiKey || endpointApiKey === 'test') {
+    throw new Error(
+      `Local endpoint "${endpoint.name}" is missing a valid api_key in codebuff.local config. ` +
+      `Please set endpoints[].api_key for this endpoint.`,
+    )
+  }
+
   return {
     baseUrl: endpoint.base_url,
-    apiKey: endpoint.api_key || env.OPENAI_API_KEY,
+    apiKey: endpointApiKey,
     model: binding?.model || endpoint.model || defaultModel,
   }
 }

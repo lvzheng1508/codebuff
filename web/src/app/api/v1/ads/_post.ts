@@ -16,6 +16,8 @@ import type {
 } from '@codebuff/common/types/contracts/logger'
 import type { NextRequest } from 'next/server'
 
+import { skipBillingChecks } from '@/lib/local-mode'
+
 const DEFAULT_PAYOUT = 0.04
 
 const messageSchema = z.object({
@@ -69,6 +71,11 @@ export async function postAds(params: {
   if (!authed.ok) return authed.response
 
   const { userId, userInfo, logger } = authed.data
+
+  // Local-only mode: ads are disabled and should not hit external Gravity API.
+  if (skipBillingChecks() || userId === 'local-mode-user') {
+    return NextResponse.json({ ad: null }, { status: 200 })
+  }
 
   // Check if Gravity API key is configured
   if (!serverEnv.GRAVITY_API_KEY) {
